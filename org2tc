@@ -48,7 +48,10 @@ def parse_org_time(s):
     return time.strptime(s, "%Y-%m-%d %a %H:%M")
 
 def parse_timestamp(s):
-    return time.strptime(s, iso_date_fmt)
+    if s[0] == '[':
+        return time.strptime(s, "[%Y-%m-%d %a %H:%M]")
+    else:
+        return time.strptime(s, iso_date_fmt)
 
 events       = []
 last_heading = None
