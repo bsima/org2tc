@@ -53,112 +53,117 @@ def parse_timestamp(s):
     else:
         return time.strptime(s, iso_date_fmt)
 
-events       = []
-last_heading = None
-clocks       = []
+def add_events():
+    # XXX: those globals should really be cleaned up, maybe through a clock object or named tuple
+    global acct, clocks, billcode, taskcode, events, keyword, title
+    if clocks:
+        for (clock_in, clock_out, billcode, taskcode) in clocks:
+            if billcode and ":" not in billcode and taskcode:
+                acct = "%s:%s" % (billcode, taskcode)
+            events.append((clock_in, clock_out, keyword,
+                           ("%s  %s" % (acct, title))
+                           if acct else title))
+        clocks = []
+
+events = []
+title  = None
+clocks = []
 
 parser = argparse.ArgumentParser(description='convert org clocks into timeclock',
                                  epilog=__doc__ +
                                  '''Note that TIME is provided in the following format: %s'''
                                  % iso_date_fmt)
-parser.add_argument('orgfile', help='Org file to process')
+parser.add_argument('orgfiles', type=argparse.FileType('r'), nargs='+',
+                    help='Org file(s) to process')
 parser.add_argument('-s', '--start', metavar='TIME', help='process only entries from this date')
 parser.add_argument('-e', '--end', metavar='TIME', help='process only entries to this date')
 parser.add_argument('-r', '--regex', help='process only entries matching this regex')
 parser.add_argument('-o', '--output', help='output file (default: stdout)',
                     type=argparse.FileType('w'), default=sys.stdout)
+
 args = parser.parse_args()
 
-data         = args.orgfile
-range_start  = parse_timestamp(args.start) if args.start else None
-range_end    = parse_timestamp(args.end) if args.end else None
-regex        = args.regex
-fd           = open(data, "r")
-headings     = [None] * 9
-acct         = "<None>"
+range_start = parse_timestamp(args.start) if args.start else None
+range_end   = parse_timestamp(args.end) if args.end else None
+regex       = args.regex
 
-(billcode, taskcode) = ("<Unknown>", None)
+for fd in args.orgfiles:
+    headings = [None] * 9
+    acct     = "<None>"
 
-def add_events():
-    # XXX: those globals should really be cleaned up, maybe through a clock object or named tuple
-    global acct, clocks, billcode, taskcode, events, todo_keyword, last_heading
-    if clocks:
-        for (clock_in, clock_out, billcode, taskcode) in clocks:
-            if billcode and ":" not in billcode and taskcode:
-                acct = "%s:%s" % (billcode, taskcode)
-            events.append((clock_in, clock_out, todo_keyword,
-                           ("%s  %s" % (acct, last_heading))
-                           if acct else last_heading))
-        clocks = []
+    (billcode, taskcode) = ("<Unknown>", None)
 
-for line in fd:
-    match = re.search("^(\*+)\s*(.+)", line)
-    if match:
-        depth = len(match.group(1))
-        headings[depth] = match.group(2)
-
-    depth = 0
-    match = re.search("^(\*+)\s+(TODO|DONE)?(\s+\[#[ABC]\])?\s*(.+)", line)
-    if match:
-        add_events()
-
-        depth = len(match.group(1))
-        todo_keyword = match.group(2)
-        last_heading = match.group(4)
-        match = re.search("(.+?)\s+:\S+:$", last_heading)
+    for line in fd:
+        match = re.search("^(\*+)\s*(.+)", line)
         if match:
-            last_heading = match.group(1)
-        match = re.search("\[\[.*\]\]\s+(.+?)$", last_heading)
+            headings[len(match.group(1))] = match.group(2)
+
+        match = re.search("^(\*+)\s+(TODO|DONE)?(\s+\[#[ABC]\])?\s*(.+)", line)
         if match:
-            last_heading = match.group(1)
+            add_events()
 
-        headings[depth] = last_heading
+            depth   = len(match.group(1))
+            keyword = match.group(2)
+            title   = match.group(4)
+            match = re.search("(.+?)\s+:\S+:$", title)
+            if match:
+                title = match.group(1)
+            match = re.search("\[\[.*\]\]\s+(.+?)$", title)
+            if match:
+                title = match.group(1)
+            headings[depth] = title
 
-        i = 0
-        prefix = ""
-        while i < depth:
+            i = 0
+            prefix = ""
+            while i < depth:
+                if prefix:
+                    prefix += ":" + headings[i]
+                else:
+                    prefix = headings[i]
+                i += 1
+
             if prefix:
-                prefix += ":" + headings[i]
-            else:
-                prefix = headings[i]
-            i += 1
+                title = prefix + ":" + title
 
-        if prefix:
-            #last_heading = prefix + "  " + last_heading
-            last_heading = prefix + ":" + last_heading
+            if regex and not (prefix and re.search(regex, prefix)):
+                title = None
 
-        if regex and not (prefix and re.search(regex, prefix)):
-            last_heading = None
+        if title:
+            match = re.search("CLOCK:\s+\[(.+?)\](--\[(.+?)\])?", line)
+            if match:
+                clock_in  = parse_org_time(match.group(1))
+                clock_out = match.group(3) # optional
+                if clock_out:
+                    clock_out = parse_org_time(clock_out)
+                else:
+                    clock_out = None
 
-    if last_heading:
-        match = re.search("CLOCK:\s+\[(.+?)\](--\[(.+?)\])?", line)
-        if match:
-            clock_in  = parse_org_time(match.group(1))
-            clock_out = match.group(3) # optional
-            if clock_out:
-                clock_out = parse_org_time(clock_out)
-            else:
-                #clock_out = time.localtime()
-                clock_out = None
-            if (not range_start or clock_in >= range_start) and \
-               (not range_end or clock_in < range_end):
-               clocks.append((clock_in, clock_out, billcode, taskcode))
-            elif clock_in < range_start and clock_out > range_start:
-               clocks.append((range_start, clock_out, billcode, taskcode))
-            elif clock_in < range_end and clock_out > range_end:
-               clocks.append((clock_in, range_end, billcode, taskcode))
+                if (not range_start or clock_in >= range_start) and \
+                   (not range_end or clock_in < range_end):
+                   clocks.append((clock_in, clock_out, billcode, taskcode))
+                elif clock_in < range_start and clock_out > range_start:
+                   clocks.append((range_start, clock_out, billcode, taskcode))
+                elif clock_in < range_end and clock_out > range_end:
+                   clocks.append((clock_in, range_end, billcode, taskcode))
 
-        match = re.search(":BILLCODE:\s+(.+)", line)
-        if match:
-            billcode = match.group(1)
-            taskcode = None
+            match = re.search(":BILLCODE:\s+(.+)", line)
+            if match:
+                billcode = match.group(1)
+                patched = []
+                for (clock_in, clock_out, oldBillcode, taskcode) in clocks:
+                    patched.append((clock_in, clock_out, billcode, taskcode))
+                clocks = patched
 
-        match = re.search(":TASKCODE:\s+(.+)", line)
-        if match:
-            taskcode = match.group(1)
+            match = re.search(":TASKCODE:\s+(.+)", line)
+            if match:
+                taskcode = match.group(1)
+                patched = []
+                for (clock_in, clock_out, billcode, oldTaskcode) in clocks:
+                    patched.append((clock_in, clock_out, billcode, taskcode))
+                clocks = patched
 
-fd.close()
-add_events()
+    fd.close()
+    add_events()
 
 events.sort(key=lambda x: time.mktime(x[0]))
 
