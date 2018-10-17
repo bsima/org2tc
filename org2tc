@@ -149,6 +149,7 @@ for fd in args.orgfiles:
             match = re.search(":BILLCODE:\s+(.+)", line)
             if match:
                 billcode = match.group(1)
+                taskcode = "Misc"
                 patched = []
                 for (clock_in, clock_out, oldBillcode, taskcode) in clocks:
                     patched.append((clock_in, clock_out, billcode, taskcode))
