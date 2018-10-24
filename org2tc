@@ -80,6 +80,8 @@ parser.add_argument('-e', '--end', metavar='TIME', help='process only entries to
 parser.add_argument('-r', '--regex', help='process only entries matching this regex')
 parser.add_argument('-o', '--output', help='output file (default: stdout)',
                     type=argparse.FileType('w'), default=sys.stdout)
+parser.add_argument('-b', '--billcode', help='default billcode if not found (default: <Unknown>',
+                    default='<Unknown>')
 
 args = parser.parse_args()
 
@@ -91,7 +93,7 @@ for fd in args.orgfiles:
     headings = [None] * 9
     acct     = "<None>"
 
-    (billcode, taskcode) = ("<Unknown>", None)
+    (billcode, taskcode) = (args.billcode, None)
 
     for line in fd:
         match = re.search("^(\*+)\s*(.+)", line)
