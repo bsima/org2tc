@@ -81,7 +81,7 @@ parser.add_argument('-r', '--regex', help='process only entries matching this re
 parser.add_argument('-o', '--output', help='output file (default: stdout)',
                     type=argparse.FileType('w'), default=sys.stdout)
 parser.add_argument('-b', '--billcode', help='default billcode if not found (default: <Unknown>',
-                    default='<Unknown>')
+                    default=None)
 
 args = parser.parse_args()
 
@@ -92,10 +92,20 @@ regex       = args.regex
 for fd in args.orgfiles:
     headings = [None] * 9
     acct     = "<None>"
+    contents = fd.read()
 
-    (billcode, taskcode) = (args.billcode, None)
+    (billcode, taskcode) = (None, None)
 
-    for line in fd:
+    if args.billcode is None:
+        match = re.search('\n#\+PROPERTY: BILLCODE (.+)\n', contents, re.IGNORECASE)
+        if match:
+            billcode = match.group(1)
+        else:
+            billcode = '<Unknown>'
+    else:
+        billcode = args.billcode
+
+    for line in contents.splitlines():
         match = re.search("^(\*+)\s*(.+)", line)
         if match:
             headings[len(match.group(1))] = match.group(2)
