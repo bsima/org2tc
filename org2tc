@@ -150,7 +150,7 @@ for fd in args.orgfiles:
                 else:
                     clock_out = None
 
-                if (not range_start or clock_in >= range_start) and \
+                if (not range_start or clock_in >= range_start) or \
                    (not range_end or clock_in < range_end):
                    clocks.append((clock_in, clock_out, billcode, taskcode))
                 elif clock_in < range_start and clock_out > range_start:
